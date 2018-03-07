@@ -19,7 +19,7 @@ git clone https://github.com/cedadev/cf-checker.git
 ```
 
 Run it:
-
+```
 ./adaguc-checker.py --checks=adaguc /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171015063857Z_20171015073557Z_N_O_20171015134801Z.nc
 CHECKING NetCDF FILE: /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171015063857Z_20171015073557Z_N_O_20171015134801Z.nc
 =====================
