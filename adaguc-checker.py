@@ -24,7 +24,11 @@ class AdagucChecker(cfchecks.CFChecker):
     def _check_variables(self):
         pass
     def _check_dimensions(self):
-        print "Dimensions:", self.f.dimensions.keys()
+        dims = self.f.dimensions.keys()
+        if ('nv' not in dims):
+            self._add_error("The nv dimension does not exist.")
+        if ('time' not in dims):
+            self._add_error("The time dimenstion does not exist.")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Check NetCDF CF file for CF and ADAGUC compliance.")
