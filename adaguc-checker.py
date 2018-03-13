@@ -95,7 +95,7 @@ class AdagucChecker(cfchecks.CFChecker):
 
         layer_par = '='.join(("LAYERS", layer))
         get_map_request = ''.join((base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
-        print "URL:", get_map_request
+        #print "URL:", get_map_request
         with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
             with open("%s/image.png" % os.environ['OUTPUT_DIR'], "wb") as f:
                 shutil.copyfileobj(r, f)
