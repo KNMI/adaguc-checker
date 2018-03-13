@@ -25,6 +25,7 @@ git clone https://github.com/cedadev/cf-checker.git
 ```
 ## Running the software
 Assuming that the autowms toplevel directory is /data/autowms:
+
 ```
 AUTOWMS_PATH=/data/autowms ./adaguc-checker.py --checks=adaguc /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171015063857Z_20171015073557Z_N_O_20171015134801Z.nc
 CHECKING NetCDF FILE: /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171015063857Z_20171015073557Z_N_O_20171015134801Z.nc
@@ -36,9 +37,11 @@ Using Area Type Table Version 6 (22 February 2017)
 
 Checking ADAGUC extensions
 ```
+
 # Running ADAGUC as Docker container
 
-## Configure 
+## Configure
+```
 mkdir /tmp/input_dir
 chmod 777 /tmp/input_dir
 mkdir /tmp/output_dir
@@ -46,13 +49,15 @@ chmod 777 /tmp/output_dir
 check adguc-checker.env:
   directories $INPUT_DIR and $OUTPUT_DIR should exist and have mods 777
 source adaguc_checker.env
-  
+```
+
 ## Build ADAGUC server docker image
+```
 git clone git@github.com:saskiawagenaar/adaguc-server.git  # For now, should be ADAGUC repo.
 cd adaguc-server
 
 docker build -t $ADAGUC_CHECKER_IMAGE .
 start-docker-adaguc-checker                # maybe "docker rm adaguc-checker" first
-
+```
 
 
