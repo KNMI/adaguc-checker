@@ -46,8 +46,10 @@ mkdir /tmp/input_dir
 chmod 777 /tmp/input_dir
 mkdir /tmp/output_dir
 chmod 777 /tmp/output_dir
+```
 check adguc-checker.env:
   directories $INPUT_DIR and $OUTPUT_DIR should exist and have mods 777
+```
 source adaguc_checker.env
 ```
 
