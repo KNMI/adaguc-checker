@@ -23,10 +23,16 @@
  # 
  #*****************************************************************************/
 
-
-
-import os, os.path, argparse, sys, subprocess
+import os, os.path, argparse, sys, subprocess, shutil
+import xml.etree.ElementTree as ET
 from cfchecker import cfchecks
+
+NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
+query_string_cap = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetCapabilities"))
+query_string_map = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetMap"))
+query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326',
+                             'BBOX=-179.0,179.0,-89.0,89.0', 'STYLES=auto/nearest',
+                             'FORMAT=image/png', 'TRANSPARENT=TRUE'))
 
 class AdagucChecker(cfchecks.CFChecker):
     def __init__(self, checks):
@@ -45,17 +51,69 @@ class AdagucChecker(cfchecks.CFChecker):
             print(e)
             sys.exit(1)
 
+
+    def checker(self, filename):
+        ## We need the filename later, CFChecker doesn't store it for us.
+        self.fname = os.path.basename(filename)
+        self.autowmspath = os.path.join(os.environ['AUTOWMS_PATH'], self.fname)
+        if (os.path.exists(self.autowmspath)):
+            os.unlink(self.autowmspath)
+        os.link(filename, self.autowmspath)
+        cfchecks.CFChecker.checker(self, filename)
+
+    def getlayer(self, capabilities):
+        """
+        Retrieve the first layer from the getcapabilities result.
+        """
+        layers = []
+        try:
+            layers = ET.fromstring(capabilities).find(
+                NS + 'Capability').find(NS + 'Layer').findall('./' + NS + "Layer[" + NS + "Name]")
+            return layers[0].find(NS + 'Name').text
+        except Exception, e:
+            print "Not possible to determine layers: %s" % str(e)
+        return None
+
+    def getcapabilities(self, source):
+        os.environ["QUERY_STRING"] = '&'.join((source, query_string_cap))
+        #print "QUERY_STRING=",os.environ['QUERY_STRING']
+        adagucproc = subprocess.Popen(self.adaguc, stdout=subprocess.PIPE)
+        (o, i) = adagucproc.communicate(input=None) 
+
+        if (os.path.exists("checker_report.txt")):
+            shutil.copyfile("checker_report.txt", "getcap_report.txt")
+        return '\n'.join(o.split('\n')[2:]) ## return with first two lines (HTTP response) stripped
+
+    def getmap(self, source, layer):
+        print "Obtaining report and data for layer", layer
+        layer_par = '='.join(("LAYERS", layer))
+        os.environ["QUERY_STRING"] = '&'.join((source, layer_par, query_string_map, query_string_par))
+        print "QUERY_STRING=",os.environ['QUERY_STRING']
+        adagucproc = subprocess.Popen(self.adaguc, stdout=subprocess.PIPE)
+        (o, i) = adagucproc.communicate(input=None)
+        imgdata_start = o.find('PNG')
+        img = open("image.png", "w")
+        img.write(o[imgdata_start:])
+        #img.write(o)
+        img.close()
+        
+        if (os.path.exists("checker_report.txt")):
+            shutil.copyfile("checker_report.txt", "getmap_report.txt")
+                    
     def _checker(self):
         print "Checking ADAGUC extensions"
         if ("all" in self.checks or "adaguc" in self.checks):
-            adagucproc = subprocess.Popen(self.adaguc, stdout=subprocess.PIPE)
-            (o, i) = adagucproc.communicate(input=None) # discard stdout
-            if (os.path.exists("checker_report.txt")):
-                with open("checker_report.txt", 'r') as report:
-                    for line in report:
-                        print line
+            query_string_src = '='.join(("source", os.path.join("/checker", self.fname)))
+            capabilities = self.getcapabilities(query_string_src)
+            layer = self.getlayer(capabilities)
+            self.getmap(query_string_src, layer)
+
         if ("all" in self.checks or "standard" in self.checks):
             cfchecks.CFChecker._checker(self)
+
+        ## Cleanup
+        #if (os.path.exists(self.autowmspath)):
+        #    os.unlink(self.autowmspath)
 
     def _check_latlon_bounds(self):
         pass
