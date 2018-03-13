@@ -59,7 +59,5 @@ git clone git@github.com:saskiawagenaar/adaguc-server.git  # For now, should be 
 cd adaguc-server
 
 docker build -t $ADAGUC_CHECKER_IMAGE .
-start-docker-adaguc-checker                # maybe "docker rm adaguc-checker" first
+./start-docker-adaguc-checker                # maybe "docker rm adaguc-checker" first
 ```
-
-
