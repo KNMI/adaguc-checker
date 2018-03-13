@@ -6,6 +6,12 @@ Usage information will follow when the original checker's command line argument 
 
 # Getting started
 
+## Prerequisites
+For the moment, you need a compiled binary of adaguc-server with the
+reporting capability. The output is not very meaningful as of yet.
+You can get adaguc-server with reporting capability here:
+https://github.com/saskiawagenaar/adaguc-server
+
 Create a python virtual environment and initialize it.
 ```
 virtualenv ./env-cf-checker
@@ -17,7 +23,7 @@ Clone the existing checker repository:
 ```
 git clone https://github.com/cedadev/cf-checker.git
 ```
-
+## Running the software
 Run it:
 ```
 ./adaguc-checker.py --checks=adaguc /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171015063857Z_20171015073557Z_N_O_20171015134801Z.nc

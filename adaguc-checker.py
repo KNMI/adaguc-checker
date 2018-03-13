@@ -25,18 +25,35 @@
 
 
 
-import os.path, argparse, sys
+import os, os.path, argparse, sys, subprocess
 from cfchecker import cfchecks
 
 class AdagucChecker(cfchecks.CFChecker):
     def __init__(self, checks):
         cfchecks.CFChecker.__init__(self)
         self.checks = checks.split(",")
+        try:
+            self.adaguc = os.path.join(os.environ['ADAGUC_PATH'], "adagucserverEC/adagucserver")
+            if (not os.path.exists(self.adaguc)):
+                raise Exception(("adagucserver executable not found at %s. "
+                                 "Please set ADAGUC_PATH environment variable correctly.") % self.adaguc)
+        except KeyError:
+            print("Could not determine path to adaguc. "
+                  "ADAGUC_PATH environment variable not set.")
+            sys.exit(1)
+        except Exception, e:
+            print(e)
+            sys.exit(1)
 
     def _checker(self):
         print "Checking ADAGUC extensions"
         if ("all" in self.checks or "adaguc" in self.checks):
-            self._check_dimensions()
+            adagucproc = subprocess.Popen(self.adaguc, stdout=subprocess.PIPE)
+            (o, i) = adagucproc.communicate(input=None) # discard stdout
+            if (os.path.exists("checker_report.txt")):
+                with open("checker_report.txt", 'r') as report:
+                    for line in report:
+                        print line
         if ("all" in self.checks or "standard" in self.checks):
             cfchecks.CFChecker._checker(self)
 
@@ -49,11 +66,7 @@ class AdagucChecker(cfchecks.CFChecker):
     def _check_variables(self):
         pass
     def _check_dimensions(self):
-        dims = self.f.dimensions.keys()
-        if ('nv' not in dims):
-            self._add_error("The nv dimension does not exist.")
-        if ('time' not in dims):
-            self._add_error("The time dimenstion does not exist.")
+        pass
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Check NetCDF CF file for CF and ADAGUC compliance.")
