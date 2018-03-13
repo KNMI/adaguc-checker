@@ -23,15 +23,18 @@
  # 
  #*****************************************************************************/
 
-import os, os.path, argparse, sys, subprocess, shutil
+import os, os.path, argparse, sys, subprocess, shutil, ssl
 import xml.etree.ElementTree as ET
+from urllib2 import urlopen, Request
+from urllib import pathname2url, urlencode, quote
+from contextlib import closing
 from cfchecker import cfchecks
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
+base_url = "http://localhost:8090/adaguc-services/adagucserver?"
 query_string_cap = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetCapabilities"))
 query_string_map = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetMap"))
-query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326',
-                             'BBOX=-179.0,179.0,-89.0,89.0', 'STYLES=auto/nearest',
+query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326', 'STYLES=auto/nearest',
                              'FORMAT=image/png', 'TRANSPARENT=TRUE'))
 
 class AdagucChecker(cfchecks.CFChecker):
@@ -55,10 +58,10 @@ class AdagucChecker(cfchecks.CFChecker):
     def checker(self, filename):
         ## We need the filename later, CFChecker doesn't store it for us.
         self.fname = os.path.basename(filename)
-        self.autowmspath = os.path.join(os.environ['AUTOWMS_PATH'], self.fname)
+        self.autowmspath = os.path.join(os.environ['INPUT_DIR'], self.fname)
         if (os.path.exists(self.autowmspath)):
             os.unlink(self.autowmspath)
-        os.link(filename, self.autowmspath)
+        shutil.copyfile(filename, self.autowmspath)
         cfchecks.CFChecker.checker(self, filename)
 
     def getlayer(self, capabilities):
@@ -76,35 +79,36 @@ class AdagucChecker(cfchecks.CFChecker):
 
     def getcapabilities(self, source):
         os.environ["QUERY_STRING"] = '&'.join((source, query_string_cap))
-        #print "QUERY_STRING=",os.environ['QUERY_STRING']
-        adagucproc = subprocess.Popen(self.adaguc, stdout=subprocess.PIPE)
-        (o, i) = adagucproc.communicate(input=None) 
-
-        if (os.path.exists("checker_report.txt")):
-            shutil.copyfile("checker_report.txt", "getcap_report.txt")
-        return '\n'.join(o.split('\n')[2:]) ## return with first two lines (HTTP response) stripped
+        request = Request(''.join((base_url, '&'.join((source, query_string_cap)))))
+        getCapabilitiesResult = ""
+        try:
+            getCapabilitiesResult = urlopen(url=request, context=ssl._create_unverified_context()).read()
+        except Exception, e:
+            print "Exception occured while performing getCapabilities request: %s" % str(e)
+            
+        if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
+            shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
+        return getCapabilitiesResult
 
     def getmap(self, source, layer):
         print "Obtaining report and data for layer", layer
+
         layer_par = '='.join(("LAYERS", layer))
-        os.environ["QUERY_STRING"] = '&'.join((source, layer_par, query_string_map, query_string_par))
-        print "QUERY_STRING=",os.environ['QUERY_STRING']
-        adagucproc = subprocess.Popen(self.adaguc, stdout=subprocess.PIPE)
-        (o, i) = adagucproc.communicate(input=None)
-        imgdata_start = o.find('PNG')
-        img = open("image.png", "w")
-        img.write(o[imgdata_start:])
-        #img.write(o)
-        img.close()
-        
-        if (os.path.exists("checker_report.txt")):
-            shutil.copyfile("checker_report.txt", "getmap_report.txt")
+        get_map_request = ''.join((base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
+        print "URL:", get_map_request
+        with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
+            with open("%s/image.png" % os.environ['OUTPUT_DIR'], "wb") as f:
+                shutil.copyfileobj(r, f)
+                
+        if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
+            shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getmap_report.txt")
                     
     def _checker(self):
         print "Checking ADAGUC extensions"
         if ("all" in self.checks or "adaguc" in self.checks):
-            query_string_src = '='.join(("source", os.path.join("/checker", self.fname)))
+            query_string_src = '='.join(("source", "/%s" % self.fname))
             capabilities = self.getcapabilities(query_string_src)
+            #print capabilities
             layer = self.getlayer(capabilities)
             self.getmap(query_string_src, layer)
 

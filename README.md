@@ -57,6 +57,7 @@ source adaguc_checker.env
 ```
 git clone git@github.com:saskiawagenaar/adaguc-server.git  # For now, should be ADAGUC repo.
 cd adaguc-server
+git checkout checker
 
 docker build -t $ADAGUC_CHECKER_IMAGE .
 ./start-docker-adaguc-checker                # maybe "docker rm adaguc-checker" first
