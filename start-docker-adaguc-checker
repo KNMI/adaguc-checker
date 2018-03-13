@@ -1,0 +1,9 @@
+
+docker run \
+  -d \
+  -e EXTERNALADDRESS="http://localhost:8090/" \
+  -p 8090:8080 \
+  -v $INPUT_DIR:/data/adaguc-autowms \
+  -v $OUTPUT_DIR:/var/log/adaguc \
+  --name adaguc-checker \
+  -it $ADAGUC_CHECKER_IMAGE
