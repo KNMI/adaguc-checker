@@ -41,27 +41,10 @@ class AdagucChecker(cfchecks.CFChecker):
     def __init__(self, checks):
         cfchecks.CFChecker.__init__(self)
         self.checks = checks.split(",")
-        try:
-            self.adaguc = os.path.join(os.environ['ADAGUC_PATH'], "adagucserverEC/adagucserver")
-            if (not os.path.exists(self.adaguc)):
-                raise Exception(("adagucserver executable not found at %s. "
-                                 "Please set ADAGUC_PATH environment variable correctly.") % self.adaguc)
-        except KeyError:
-            print("Could not determine path to adaguc. "
-                  "ADAGUC_PATH environment variable not set.")
-            sys.exit(1)
-        except Exception, e:
-            print(e)
-            sys.exit(1)
-
-
+        
     def checker(self, filename):
         ## We need the filename later, CFChecker doesn't store it for us.
         self.fname = os.path.basename(filename)
-        self.autowmspath = os.path.join(os.environ['INPUT_DIR'], self.fname)
-        if (os.path.exists(self.autowmspath)):
-            os.unlink(self.autowmspath)
-        shutil.copyfile(filename, self.autowmspath)
         cfchecks.CFChecker.checker(self, filename)
 
     def getlayer(self, capabilities):
@@ -85,9 +68,14 @@ class AdagucChecker(cfchecks.CFChecker):
             getCapabilitiesResult = urlopen(url=request, context=ssl._create_unverified_context()).read()
         except Exception, e:
             print "Exception occured while performing getCapabilities request: %s" % str(e)
-            
+
+        print ("========= BEGIN GETCAPABILITIES REPORT ==========")
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
-            shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
+            # shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
+            with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
+                for line in reportfile:
+                    print(line)
+        print ("========== END GETCAPABILITIES REPORT ===========")
         return getCapabilitiesResult
 
     def getmap(self, source, layer):
@@ -96,12 +84,19 @@ class AdagucChecker(cfchecks.CFChecker):
         layer_par = '='.join(("LAYERS", layer))
         get_map_request = ''.join((base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
         #print "URL:", get_map_request
-        with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
-            with open("%s/image.png" % os.environ['OUTPUT_DIR'], "wb") as f:
-                shutil.copyfileobj(r, f)
-                
+        try:
+            with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
+                with open("%s/image.png" % os.environ['OUTPUT_DIR'], "wb") as f:
+                    shutil.copyfileobj(r, f)
+        except: pass
+
+        print ("========= BEGIN GETMAP REPORT ==========")
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
-            shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getmap_report.txt")
+            with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
+                for line in reportfile:
+                    print(line)
+        print ("========== END GETMAP REPORT ===========")
+                    
                     
     def _checker(self):
         print "Checking ADAGUC extensions"
