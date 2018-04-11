@@ -45,6 +45,11 @@ class AdagucChecker(cfchecks.CFChecker):
     def checker(self, filename):
         ## We need the filename later, CFChecker doesn't store it for us.
         self.fname = os.path.basename(filename)
+        if (os.path.dirname(filename) == os.environ['INPUT_DIR'].rstrip('/')):
+            self.dirname = "" ## file is not in a (temporary) subdir
+        else:
+            ## Separate the temporary subdir out to be added to the url.
+            self.dirname = os.path.basename(os.path.dirname(filename))
         cfchecks.CFChecker.checker(self, filename)
 
     def getlayer(self, capabilities):
@@ -86,7 +91,7 @@ class AdagucChecker(cfchecks.CFChecker):
         #print "URL:", get_map_request
         try:
             with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
-                with open("%s/image.png" % os.environ['OUTPUT_DIR'], "wb") as f:
+                with open("%s/image.%s.png" % (os.environ['INPUT_DIR'], self.fname), "wb") as f:
                     shutil.copyfileobj(r, f)
         except: pass
 
@@ -101,7 +106,10 @@ class AdagucChecker(cfchecks.CFChecker):
     def _checker(self):
         print "Checking ADAGUC extensions"
         if ("all" in self.checks or "adaguc" in self.checks):
-            query_string_src = '='.join(("source", "/%s" % self.fname))
+            if not self.dirname:
+                query_string_src = '='.join(("source", "/%s" % self.fname))
+            else:
+                query_string_src = '='.join(("source", "/%s/%s" % (self.dirname, self.fname)))
             capabilities = self.getcapabilities(query_string_src)
             #print capabilities
             layer = self.getlayer(capabilities)
