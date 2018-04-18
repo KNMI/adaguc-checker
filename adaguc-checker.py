@@ -31,7 +31,7 @@ from contextlib import closing
 from cfchecker import cfchecks
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
-base_url = "http://localhost:8090/adaguc-services/adagucserver?"
+base_url = "http://adaguc-checker:8080/adaguc-services/adagucserver?"
 query_string_cap = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetCapabilities"))
 query_string_map = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetMap"))
 query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326', 'STYLES=auto/nearest',
