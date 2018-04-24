@@ -108,6 +108,7 @@ class AdagucChecker(cfchecks.CFChecker):
                 reportobj_str = reportfile.read()
         reportobj = json.loads(reportobj_str)
         reportobj["image"] = base64.b64encode(imgdata)
+        reportobj["layer"] = layer
         return reportobj
         #print ("========== END GETMAP REPORT ===========")
                     
@@ -126,7 +127,7 @@ class AdagucChecker(cfchecks.CFChecker):
             map_dict = {"getmap":[]}
             for layer in layers:
                 layer_report = self.getmap(query_string_src, layer)
-                map_dict["getmap"].append({layer:layer_report})
+                map_dict["getmap"].append(layer_report)
             report_dict = cap_dict.copy()
             report_dict.update(map_dict)
             print json.dumps(report_dict)
