@@ -60,8 +60,12 @@ class AdagucChecker(cfchecks.CFChecker):
         layers = []
         try:
             layers = ET.fromstring(capabilities).find(
-                NS + 'Capability').find(NS + 'Layer').findall('./' + NS + "Layer[" + NS + "Name]")
-            return layers[0].find(NS + 'Name').text
+                NS + 'Capability').find(NS + 'Layer').findall(
+                    './' + NS + "Layer[" + NS + "Name]")
+            layernames = []
+            for layer in layers:
+                layernames.append(layer.find(NS + 'Name').text)
+            return layernames
         except Exception, e:
             print "Not possible to determine layers: %s" % str(e)
         return None
@@ -98,17 +102,13 @@ class AdagucChecker(cfchecks.CFChecker):
         except: pass
 
         #print ("========= BEGIN GETMAP REPORT ==========")
-        map_dict = {"getmap":[]}
         reportobj_str = ""
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
                 reportobj_str = reportfile.read()
         reportobj = json.loads(reportobj_str)
         reportobj["image"] = base64.b64encode(imgdata)
-        #reportobj["image"] = "the image"
-        map_dict["getmap"].append({layer:reportobj})
-        return map_dict
-                    
+        return reportobj
         #print ("========== END GETMAP REPORT ===========")
                     
                     
@@ -122,8 +122,11 @@ class AdagucChecker(cfchecks.CFChecker):
                 query_string_src = '='.join(("source", "/%s/%s" % (self.dirname, self.fname)))
             capabilities, cap_dict = self.getcapabilities(query_string_src)
             #print capabilities
-            layer = self.getlayer(capabilities)
-            map_dict = self.getmap(query_string_src, layer)
+            layers = self.getlayer(capabilities)
+            map_dict = {"getmap":[]}
+            for layer in layers:
+                layer_report = self.getmap(query_string_src, layer)
+                map_dict["getmap"].append({layer:layer_report})
             report_dict = cap_dict.copy()
             report_dict.update(map_dict)
             print json.dumps(report_dict)
