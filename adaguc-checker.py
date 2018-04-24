@@ -23,7 +23,7 @@
  # 
  #*****************************************************************************/
 
-import os, os.path, argparse, sys, subprocess, shutil, ssl
+import os, os.path, argparse, sys, subprocess, shutil, ssl, json, base64
 import xml.etree.ElementTree as ET
 from urllib2 import urlopen, Request
 from urllib import pathname2url, urlencode, quote
@@ -32,6 +32,7 @@ from cfchecker import cfchecks
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
 base_url = "http://adaguc-checker:8080/adaguc-services/adagucserver?"
+#base_url = "http://localhost:8090/adaguc-services/adagucserver?"
 query_string_cap = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetCapabilities"))
 query_string_map = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetMap"))
 query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326', 'STYLES=auto/nearest',
@@ -74,46 +75,59 @@ class AdagucChecker(cfchecks.CFChecker):
         except Exception, e:
             print "Exception occured while performing getCapabilities request: %s" % str(e)
 
-        print ("========= BEGIN GETCAPABILITIES REPORT ==========")
+        #print ("========= BEGIN GETCAPABILITIES REPORT ==========")
+        getcap_dict = {"getcap":{"xml":"empty for now"}}
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             # shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
-                for line in reportfile:
-                    print(line)
-        print ("========== END GETCAPABILITIES REPORT ===========")
-        return getCapabilitiesResult
+                getcap_dict["getcap"].update(json.loads(reportfile.read()))
+        #print ("========== END GETCAPABILITIES REPORT ===========")
+        return getCapabilitiesResult, getcap_dict
 
     def getmap(self, source, layer):
-        print "Obtaining report and data for layer", layer
+        #print "Obtaining report and data for layer", layer
 
         layer_par = '='.join(("LAYERS", layer))
         get_map_request = ''.join((base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
         #print "URL:", get_map_request
         try:
             with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
-                with open("%s/image.%s.png" % (os.environ['INPUT_DIR'], self.fname), "wb") as f:
-                    shutil.copyfileobj(r, f)
+                imgdata = r.read()
+            imgfile = open("%s/image.%s.png" % (os.environ['INPUT_DIR'], self.fname), "wb")
+            imgfile.write(imgdata)
         except: pass
 
-        print ("========= BEGIN GETMAP REPORT ==========")
+        #print ("========= BEGIN GETMAP REPORT ==========")
+        map_dict = {"getmap":[]}
+        reportobj_str = ""
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
-                for line in reportfile:
-                    print(line)
-        print ("========== END GETMAP REPORT ===========")
+                reportobj_str = reportfile.read()
+        reportobj = json.loads(reportobj_str)
+        reportobj["image"] = base64.b64encode(imgdata)
+        #reportobj["image"] = "the image"
+        map_dict["getmap"].append({layer:reportobj})
+        return map_dict
+                    
+        #print ("========== END GETMAP REPORT ===========")
                     
                     
     def _checker(self):
-        print "Checking ADAGUC extensions"
+        #print "Checking ADAGUC extensions"
+        sys.stdout = sys.__stdout__
         if ("all" in self.checks or "adaguc" in self.checks):
             if not self.dirname:
                 query_string_src = '='.join(("source", "/%s" % self.fname))
             else:
                 query_string_src = '='.join(("source", "/%s/%s" % (self.dirname, self.fname)))
-            capabilities = self.getcapabilities(query_string_src)
+            capabilities, cap_dict = self.getcapabilities(query_string_src)
             #print capabilities
             layer = self.getlayer(capabilities)
-            self.getmap(query_string_src, layer)
+            map_dict = self.getmap(query_string_src, layer)
+            report_dict = cap_dict.copy()
+            report_dict.update(map_dict)
+            print json.dumps(report_dict)
+            
 
         if ("all" in self.checks or "standard" in self.checks):
             cfchecks.CFChecker._checker(self)
@@ -147,6 +161,7 @@ def parse_args():
         
 def main():
     args = parse_args()
+    sys.stdout = open("/dev/null", "w")
     checker = AdagucChecker(args.checks)
     AdagucChecker.checker(checker, args.filename)
     sys.exit(0)
