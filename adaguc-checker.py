@@ -39,9 +39,10 @@ query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326', 'STYLE
                              'FORMAT=image/png', 'TRANSPARENT=TRUE'))
 
 class AdagucChecker(cfchecks.CFChecker):
-    def __init__(self, checks):
+    def __init__(self, args):
         cfchecks.CFChecker.__init__(self)
-        self.checks = checks.split(",")
+        self.checks = args.checks.split(",")
+        self.imagedir = args.imagedir
         
     def checker(self, filename):
         ## We need the filename later, CFChecker doesn't store it for us.
@@ -97,8 +98,13 @@ class AdagucChecker(cfchecks.CFChecker):
         try:
             with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
                 imgdata = r.read()
-            imgfile = open("%s/image.%s.png" % (os.environ['INPUT_DIR'], self.fname), "wb")
-            imgfile.write(imgdata)
+            if self.imagedir and os.path.exists(self.imagedir):
+                imgfile = open("%s/%s.%s.png" % (self.imagedir, self.fname, layer), "wb")
+                imgfile.write(imgdata)
+                imgfile.close()
+            elif not os.path.exists(self.imagedir):
+                print >>sys.stderr, "%s doesn't exists. Not writing image file."
+                
         except: pass
 
         #print ("========= BEGIN GETMAP REPORT ==========")
@@ -160,13 +166,17 @@ def parse_args():
                               "all: perform both adaguc and standard cf."
                               "adaguc: perform only adaguc related checks."
                               "standard: perform only standard cf checks."))
+    parser.add_argument("--imagedir", type=str, dest="imagedir", nargs="?", action="store", default=None,
+                        required=False, help=("Directory to store images in if you want to"
+                                              "keep them. If this option is not given, no images"
+                                              "will be kept on disk."))
 
     return parser.parse_args()
         
 def main():
     args = parse_args()
     sys.stdout = open("/dev/null", "w")
-    checker = AdagucChecker(args.checks)
+    checker = AdagucChecker(args)
     AdagucChecker.checker(checker, args.filename)
     sys.exit(0)
         

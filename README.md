@@ -40,6 +40,13 @@ Using Area Type Table Version 6 (22 February 2017)
 Checking ADAGUC extensions
 ```
 
+If you wish to keep the images generated for all layers. Supply the --imagedir
+command line option:
+```
+$ ./adaguc-checker.py --checks=adaguc --imagedir=./ /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171019065654Z_20171019075354Z_N_O_20171019144803Z.nc > output.json
+```
+The above command also redirects the JSON output to a file named output.json. Images are stored in the current directory with the following naming scheme `input_filename.layername.png` where the .nc extension is stripped from the input filename.
+
 # Running ADAGUC as Docker container
 
 ## Configure
