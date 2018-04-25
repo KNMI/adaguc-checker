@@ -32,7 +32,6 @@ from cfchecker import cfchecks
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
 base_url = "http://adaguc-checker:8080/adaguc-services/adagucserver?"
-#base_url = "http://localhost:8090/adaguc-services/adagucserver?"
 query_string_cap = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetCapabilities"))
 query_string_map = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetMap"))
 query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326', 'STYLES=auto/nearest',
@@ -43,7 +42,11 @@ class AdagucChecker(cfchecks.CFChecker):
         cfchecks.CFChecker.__init__(self)
         self.checks = args.checks.split(",")
         self.imagedir = args.imagedir
-        
+        if args.base_url:
+            self.base_url = args.base_url
+        else:
+            self.base_url = base_url
+            
     def checker(self, filename):
         ## We need the filename later, CFChecker doesn't store it for us.
         self.fname = os.path.basename(filename)
@@ -73,7 +76,7 @@ class AdagucChecker(cfchecks.CFChecker):
 
     def getcapabilities(self, source):
         os.environ["QUERY_STRING"] = '&'.join((source, query_string_cap))
-        request = Request(''.join((base_url, '&'.join((source, query_string_cap)))))
+        request = Request(''.join((self.base_url, '&'.join((source, query_string_cap)))))
         getCapabilitiesResult = ""
         try:
             getCapabilitiesResult = urlopen(url=request, context=ssl._create_unverified_context()).read()
@@ -93,7 +96,7 @@ class AdagucChecker(cfchecks.CFChecker):
         #print "Obtaining report and data for layer", layer
 
         layer_par = '='.join(("LAYERS", layer))
-        get_map_request = ''.join((base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
+        get_map_request = ''.join((self.base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
         #print "URL:", get_map_request
         try:
             with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
@@ -167,10 +170,14 @@ def parse_args():
                               "adaguc: perform only adaguc related checks."
                               "standard: perform only standard cf checks."))
     parser.add_argument("--imagedir", type=str, dest="imagedir", nargs="?", action="store", default=None,
-                        required=False, help=("Directory to store images in if you want to"
-                                              "keep them. If this option is not given, no images"
+                        required=False, help=("Directory to store images in if you want to "
+                                              "keep them. If this option is not given, no images "
                                               "will be kept on disk."))
-
+    parser.add_argument("--baseurl", type=str, dest="base_url", nargs="?", action="store", default=None,
+                        required=False, help=("Base url consisting of hostname, port and pathname. "
+                                              "This is used to construct the first part of the WMS "
+                                              "request. Default is %s which is suitable for the "
+                                              "dockers started with the start-docker.sh script." % base_url))
     return parser.parse_args()
         
 def main():

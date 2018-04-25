@@ -47,6 +47,12 @@ $ ./adaguc-checker.py --checks=adaguc --imagedir=./ /nobackup/users/neutvd/data/
 ```
 The above command also redirects the JSON output to a file named output.json. Images are stored in the current directory with the following naming scheme `input_filename.layername.png` where the .nc extension is stripped from the input filename.
 
+When using the adaguc-server docker started from the start-docker.sh script you probably want to supply the `--baseurl` command line arguement to set the base url to `http://localhost:8090/adaguc-services/adagucserver?`. The default is set for use in conjunction with a separate WPS wrapper using 2 docker instances in a network. Example:
+
+```
+./adaguc-checker.py --baseurl='http://localhost:8090/adaguc-services/adagucserver?'  --checks=adaguc --imagedir=./ /nobackup/users/neutvd/data/autowms/S-O3M_GOME_ARP_02_M01_20171019065654Z_20171019075354Z_N_O_20171019144803Z.nc
+```
+
 # Running ADAGUC as Docker container
 
 ## Configure
