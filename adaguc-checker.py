@@ -88,7 +88,7 @@ class AdagucChecker(cfchecks.CFChecker):
     def getcapabilities(self, source):
         os.environ["QUERY_STRING"] = '&'.join((source, query_string_cap))
         request = Request(''.join((self.base_url, '&'.join((source, query_string_cap)))))
-        logging.debug("get_cap_request:/n" + request)
+        logging.debug("get_cap_request:\n %s" % request.get_full_url())
 
         getCapabilitiesResult = ""
         try:
@@ -120,7 +120,7 @@ class AdagucChecker(cfchecks.CFChecker):
         bounding_box_par = '='.join(("BBOX", bounding_box_arg))
 
         get_map_request = ''.join((self.base_url, '&'.join((source, layer_par, query_string_map, query_string_par_layer, bounding_box_par))))
-        logging.debug("get_map_request:/n" + get_map_request)
+        logging.debug("get_map_request:\n" + get_map_request)
 
         try:
             with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
@@ -149,14 +149,14 @@ class AdagucChecker(cfchecks.CFChecker):
         # Retrieve the background map.
         get_bgmap_request = ''.join((base_url_bgmap, '&'.join((
             "LAYERS=naturalearth2", query_string_map, query_string_par_baselayer, bounding_box_par))))
-        logging.debug("get_bgmap_request:/n" + get_bgmap_request)
+        logging.debug("get_bgmap_request:\n" + get_bgmap_request)
         with closing(urlopen(url=get_bgmap_request, context=ssl._create_unverified_context())) as r:
             bg_imgdata = r.read()
 
         # Retrieve the countries map.
         get_countries_request = ''.join((base_url_countries, '&'.join((
             "LAYERS=ne_10m_admin_0_countries_simplified", query_string_map, query_string_par_baselayer, bounding_box_par))))
-        logging.debug("get_countries_request:/n" + get_countries_request)
+        logging.debug("get_countries_request:\n" + get_countries_request)
         with closing(urlopen(url=get_countries_request, context=ssl._create_unverified_context())) as r:
             countries_imgdata = r.read()
 
