@@ -23,19 +23,30 @@
  # 
  #*****************************************************************************/
 
-import os, os.path, argparse, sys, subprocess, shutil, ssl, json, base64
+import os, os.path, argparse, sys, subprocess, shutil, ssl, json, base64, logging
 import xml.etree.ElementTree as ET
 from urllib2 import urlopen, Request
 from urllib import pathname2url, urlencode, quote
 from contextlib import closing
 from cfchecker import cfchecks
+from PIL import Image
+from io import BytesIO
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
 base_url = "http://adaguc-checker:8080/adaguc-services/adagucserver?"
+base_url_bgmap = "http://geoservices.knmi.nl/cgi-bin/bgmaps.cgi?"
+base_url_countries = "http://geoservices.knmi.nl/cgi-bin/worldmaps.cgi?"
 query_string_cap = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetCapabilities"))
-query_string_map = '&'.join(("SERVICE=WMS", "VERSION=1.3.0", "REQUEST=GetMap"))
-query_string_par = '&'.join(('WIDTH=1000', 'HEIGHT=900', 'CRS=EPSG:4326', 'STYLES=auto/nearest',
+query_string_map = '&'.join(("SERVICE=WMS", "REQUEST=GetMap",'WIDTH=1000', 'HEIGHT=900',
                              'FORMAT=image/png', 'TRANSPARENT=TRUE'))
+query_string_par_layer = '&'.join(('CRS=EPSG:4326', 'STYLES=auto/nearest', "VERSION=1.3.0"))
+query_string_par_baselayer = '&'.join(('SRS=EPSG:4326', "VERSION=1.1.1"))
+
+logger = logging.getLogger('adaguc-checker')
+loghandler = logging.FileHandler(filename=os.environ['LOGGING_DIR'] + '/adaguc-checker.log')
+loghandler.setFormatter(logging.Formatter('%(asctime)s - [%(name)s:%(levelname)s] %(message)s'))
+logger.addHandler(loghandler)
+logger.setLevel(logging.DEBUG)
 
 class AdagucChecker(cfchecks.CFChecker):
     def __init__(self, args):
@@ -57,19 +68,23 @@ class AdagucChecker(cfchecks.CFChecker):
             self.dirname = os.path.basename(os.path.dirname(filename))
         cfchecks.CFChecker.checker(self, filename)
 
-    def getlayer(self, capabilities):
+    def getlayers(self, capabilities):
         """
-        Retrieve the first layer from the getcapabilities result.
+        Retrieve all layer-information from the getcapabilities result.
+        Layer-information includes:
+          - layername
+          - boundingbox
+
         """
-        layers = []
+        layers_xml = []
         try:
-            layers = ET.fromstring(capabilities).find(
+            layers_xml = ET.fromstring(capabilities).find(
                 NS + 'Capability').find(NS + 'Layer').findall(
                     './' + NS + "Layer[" + NS + "Name]")
-            layernames = []
-            for layer in layers:
-                layernames.append(layer.find(NS + 'Name').text)
-            return layernames
+            layers = []
+            for layer in layers_xml:
+                layers.append({"name": layer.find(NS + 'Name').text, "bbox": layer.find('./' + NS + "BoundingBox[@CRS='EPSG:4326']").attrib})
+            return layers
         except Exception, e:
             print "Not possible to determine layers: %s" % str(e)
         return None
@@ -77,53 +92,117 @@ class AdagucChecker(cfchecks.CFChecker):
     def getcapabilities(self, source):
         os.environ["QUERY_STRING"] = '&'.join((source, query_string_cap))
         request = Request(''.join((self.base_url, '&'.join((source, query_string_cap)))))
+        logger.debug("get_cap_request:\n %s" % request.get_full_url())
+
         getCapabilitiesResult = ""
         try:
             getCapabilitiesResult = urlopen(url=request, context=ssl._create_unverified_context()).read()
         except Exception, e:
             print "Exception occured while performing getCapabilities request: %s" % str(e)
 
-        #print ("========= BEGIN GETCAPABILITIES REPORT ==========")
+
         getcap_dict = {"getcap":{"xml":"empty for now"}}
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             # shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
                 getcap_dict["getcap"].update(json.loads(reportfile.read()))
-        #print ("========== END GETCAPABILITIES REPORT ===========")
         return getCapabilitiesResult, getcap_dict
 
     def getmap(self, source, layer):
-        #print "Obtaining report and data for layer", layer
+        """
+        Performs a get map request for the specified layer. This results in an image of the getmap result as well as
+        a checker report written to the output directory of the checker.
+        :param source: autoWMS directory where the file to check is located
+        :param layer: layer dictionary including the name and the boundingbox of the layer
+        :return: image data for the get map result.
+        """
 
-        layer_par = '='.join(("LAYERS", layer))
-        get_map_request = ''.join((self.base_url, '&'.join((source, layer_par, query_string_map, query_string_par))))
-        #print "URL:", get_map_request
+        layer_par = '='.join(("LAYERS", layer["name"]))
+
+        # Note: The order of the boundingbox definition is different for the baselayer service and ADAGUC autoWMS
+        bounding_box_arg = ','.join((layer["bbox"]["minx"], layer["bbox"]["miny"], layer["bbox"]["maxx"], layer["bbox"]["maxy"]))
+        bounding_box_par = '='.join(("BBOX", bounding_box_arg))
+
+        get_map_request = ''.join((self.base_url, '&'.join((source, layer_par, query_string_map, query_string_par_layer, bounding_box_par))))
+        logger.debug("get_map_request:\n" + get_map_request)
+
         try:
             with closing(urlopen(url=get_map_request, context=ssl._create_unverified_context())) as r:
                 imgdata = r.read()
             if self.imagedir and os.path.exists(self.imagedir):
-                imgfile = open("%s/%s.%s.png" % (self.imagedir, self.fname, layer), "wb")
+                imgfile = open("%s/%s.%s.png" % (self.imagedir, self.fname, layer["name"]), "wb")
                 imgfile.write(imgdata)
                 imgfile.close()
             elif not os.path.exists(self.imagedir):
                 print >>sys.stderr, "%s doesn't exists. Not writing image file."
-                
         except: pass
 
-        #print ("========= BEGIN GETMAP REPORT ==========")
+        return imgdata
+
+    def getbaselayers(self, layer_bbox):
+        """
+        Retrieves a background layer and country outlines for the given bounding box from geoservices.knmi.nl.
+        :param layer_bbox: The required bounding box.
+        :return: Image data for the background layer and the country outlines
+        """
+
+        # Note: The order of the boundingbox definition is different for the baselayer service and ADAGUC autoWMS
+        bounding_box_arg = ','.join((layer_bbox["miny"], layer_bbox["minx"], layer_bbox["maxy"], layer_bbox["maxx"]))
+        bounding_box_par = '='.join(("BBOX", bounding_box_arg))
+
+        # Retrieve the background map.
+        get_bgmap_request = ''.join((base_url_bgmap, '&'.join((
+            "LAYERS=naturalearth2", query_string_map, query_string_par_baselayer, bounding_box_par))))
+        logger.debug("get_bgmap_request:\n" + get_bgmap_request)
+        with closing(urlopen(url=get_bgmap_request, context=ssl._create_unverified_context())) as r:
+            bg_imgdata = r.read()
+
+        # Retrieve the countries map.
+        get_countries_request = ''.join((base_url_countries, '&'.join((
+            "LAYERS=ne_10m_admin_0_countries_simplified", query_string_map, query_string_par_baselayer, bounding_box_par))))
+        logger.debug("get_countries_request:\n" + get_countries_request)
+        with closing(urlopen(url=get_countries_request, context=ssl._create_unverified_context())) as r:
+            countries_imgdata = r.read()
+
+        return (bg_imgdata, countries_imgdata)
+
+    def combineimages(self, background_imgdata, foreground_imgdata_list):
+        """
+        Overlays the background imagedata with the images in the foreground_imgdata_list.
+        The forground images are added in the order in which they are added to the foreground_imgdata_list.
+        :param background_imgdata: The binary background imgdata
+        :param foreground_imgdata_list: An array of the binary foreground imgdata
+        :return: A BytesIO object containing the combined image.
+        """
+
+        background = Image.open(BytesIO(background_imgdata))
+
+        for foreground_imgdata in foreground_imgdata_list:
+            foreground = Image.open(BytesIO(foreground_imgdata)).convert("RGBA")
+            background.paste(foreground, mask=foreground)
+
+        merged_imgdata = BytesIO()
+        background.save(merged_imgdata, "PNG")
+        return merged_imgdata
+
+    def createlayerreport(self, layername, layerimage):
+        """
+        Creates a report in json form for the specified layer, using the current checker report in the output directory.
+        This includes the layer name as well as the layer image encoded as a base64 string.
+        :param layername: The layer name.
+        :param layerimage: The layer image.
+        :return:
+        """
         reportobj_str = ""
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
                 reportobj_str = reportfile.read()
         reportobj = json.loads(reportobj_str)
-        reportobj["image"] = base64.b64encode(imgdata)
-        reportobj["layer"] = layer
+        reportobj["image"] = base64.b64encode(layerimage.getvalue())
+        reportobj["layer"] = layername
         return reportobj
-        #print ("========== END GETMAP REPORT ===========")
-                    
                     
     def _checker(self):
-        #print "Checking ADAGUC extensions"
         sys.stdout = sys.__stdout__
         if ("all" in self.checks or "adaguc" in self.checks):
             if not self.dirname:
@@ -131,23 +210,20 @@ class AdagucChecker(cfchecks.CFChecker):
             else:
                 query_string_src = '='.join(("source", "/%s/%s" % (self.dirname, self.fname)))
             capabilities, cap_dict = self.getcapabilities(query_string_src)
-            #print capabilities
-            layers = self.getlayer(capabilities)
+
+            layers = self.getlayers(capabilities)
             map_dict = {"getmap":[]}
             for layer in layers:
-                layer_report = self.getmap(query_string_src, layer)
-                map_dict["getmap"].append(layer_report)
+                layer_imgdata = self.getmap(query_string_src, layer)
+                bgmap_imgdata, countries_imgdata = self.getbaselayers(layer["bbox"])
+                merged_imgdata = self.combineimages(bgmap_imgdata, (countries_imgdata, layer_imgdata))
+                map_dict["getmap"].append(self.createlayerreport(layer["name"], merged_imgdata))
             report_dict = cap_dict.copy()
             report_dict.update(map_dict)
             print json.dumps(report_dict)
-            
 
         if ("all" in self.checks or "standard" in self.checks):
             cfchecks.CFChecker._checker(self)
-
-        ## Cleanup
-        #if (os.path.exists(self.autowmspath)):
-        #    os.unlink(self.autowmspath)
 
     def _check_latlon_bounds(self):
         pass
