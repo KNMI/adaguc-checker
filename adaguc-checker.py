@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
  #*****************************************************************************
- # 
+ #
  # Author:   Ian van der Neut <neutvd@knmi.nl>
  # Date:     2015-05-06
  #
@@ -12,15 +12,15 @@
  # Licensed under the Apache License, Version 2.0 (the "License");
  # you may not use this file except in compliance with the License.
  # You may obtain a copy of the License at
- # 
+ #
  #      http://www.apache.org/licenses/LICENSE-2.0
- # 
+ #
  # Unless required by applicable law or agreed to in writing, software
  # distributed under the License is distributed on an "AS IS" BASIS,
  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  # See the License for the specific language governing permissions and
  # limitations under the License.
- # 
+ #
  #*****************************************************************************/
 
 import os, os.path, argparse, sys, subprocess, shutil, ssl, json, base64, logging
@@ -57,7 +57,7 @@ class AdagucChecker(cfchecks.CFChecker):
             self.base_url = args.base_url
         else:
             self.base_url = base_url
-            
+
     def checker(self, filename):
         ## We need the filename later, CFChecker doesn't store it for us.
         self.fname = os.path.basename(filename)
@@ -101,11 +101,20 @@ class AdagucChecker(cfchecks.CFChecker):
             print "Exception occured while performing getCapabilities request: %s" % str(e)
 
 
-        getcap_dict = {"getcap":{"xml":"empty for now"}}
+        getcap_dict = {"nerrors":0, "nwarnings":0, "getcap":{"reportname":"GetCapabilities", "nerrors":0, "nwarnings":0, "xml":"empty for now"}}
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             # shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
                 getcap_dict["getcap"].update(json.loads(reportfile.read()))
+
+        for message in getcap_dict["getcap"]["messages"]:
+            if(message["severity"]=='ERROR'):
+                getcap_dict["getcap"]["nerrors"] += 1
+                getcap_dict["nerrors"] += 1
+            elif(message["severity"]=='WARNING'):
+                getcap_dict["getcap"]["nwarnings"] += 1
+                getcap_dict["nwarnings"] += 1
+
         return getCapabilitiesResult, getcap_dict
 
     def getmap(self, source, layer):
@@ -199,9 +208,18 @@ class AdagucChecker(cfchecks.CFChecker):
                 reportobj_str = reportfile.read()
         reportobj = json.loads(reportobj_str)
         reportobj["image"] = base64.b64encode(layerimage.getvalue())
-        reportobj["layer"] = layername
+        reportobj["reportname"] = layername
+        reportobj["nerrors"] = 0
+        reportobj["nwarnings"] = 0
+
+        for message in reportobj["messages"]:
+            if(message["severity"]=='ERROR'):
+                reportobj["nerrors"] += 1
+            if(message["severity"]=='WARNING'):
+                reportobj["nwarnings"] += 1
+
         return reportobj
-                    
+
     def _checker(self):
         sys.stdout = sys.__stdout__
         if ("all" in self.checks or "adaguc" in self.checks):
@@ -217,7 +235,18 @@ class AdagucChecker(cfchecks.CFChecker):
                 layer_imgdata = self.getmap(query_string_src, layer)
                 bgmap_imgdata, countries_imgdata = self.getbaselayers(layer["bbox"])
                 merged_imgdata = self.combineimages(bgmap_imgdata, (countries_imgdata, layer_imgdata))
-                map_dict["getmap"].append(self.createlayerreport(layer["name"], merged_imgdata))
+                layer_dict = self.createlayerreport(layer["name"], merged_imgdata)
+                map_dict["getmap"].append(layer_dict)
+
+                for message in layer_dict["messages"]:
+                    if(message["severity"]=='ERROR'):
+                        layer_dict["nerrors"] += 1
+                        cap_dict["nerrors"] += 1
+                    if(message["severity"]=='WARNING'):
+                        layer_dict["nwarnings"] += 1
+                        cap_dict["nwarnings"] += 1
+
+
             report_dict = cap_dict.copy()
             report_dict.update(map_dict)
             print json.dumps(report_dict)
@@ -255,13 +284,13 @@ def parse_args():
                                               "request. Default is %s which is suitable for the "
                                               "dockers started with the start-docker.sh script." % base_url))
     return parser.parse_args()
-        
+
 def main():
     args = parse_args()
     sys.stdout = open("/dev/null", "w")
     checker = AdagucChecker(args)
     AdagucChecker.checker(checker, args.filename)
     sys.exit(0)
-        
+
 if __name__ == "__main__":
     main()
