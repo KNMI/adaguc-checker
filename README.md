@@ -23,6 +23,19 @@ Clone the existing checker repository:
 ```
 git clone https://github.com/cedadev/cf-checker.git
 ```
+
+or install it through pip:
+
+```
+pip install cfchecker
+```
+
+Pillow is also needed for some image processing. Install it with pip in the
+virtual environment:
+```
+pip install Pillow
+```
+
 ## Running the software
 Assuming that the autowms toplevel directory is /data/autowms:
 
@@ -39,6 +52,8 @@ Using Area Type Table Version 6 (22 February 2017)
 
 Checking ADAGUC extensions
 ```
+
+For now it is required that the file is located in the autowms directory of the adaguc-server and you must also supply the full path to the file on the command line. This is to satisfy both adaguc-server and the cfchecker library dependency.
 
 If you wish to keep the images generated for all layers. Supply the --imagedir
 command line option:

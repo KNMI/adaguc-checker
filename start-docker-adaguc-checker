@@ -1,6 +1,6 @@
 
 docker run \
-  -d \
+  -d --rm \
   -e EXTERNALADDRESS="http://localhost:8090/" \
   -p 8090:8080 \
   -v $INPUT_DIR:/data/adaguc-autowms \
