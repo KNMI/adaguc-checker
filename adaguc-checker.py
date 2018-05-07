@@ -175,14 +175,18 @@ class AdagucChecker(cfchecks.CFChecker):
         :return: A BytesIO object containing the combined image.
         """
 
-        background = Image.open(BytesIO(background_imgdata))
-
-        for foreground_imgdata in foreground_imgdata_list:
-            foreground = Image.open(BytesIO(foreground_imgdata)).convert("RGBA")
-            background.paste(foreground, mask=foreground)
-
         merged_imgdata = BytesIO()
-        background.save(merged_imgdata, "PNG")
+
+        try:
+            background = Image.open(BytesIO(background_imgdata))
+
+            for foreground_imgdata in foreground_imgdata_list:
+                foreground = Image.open(BytesIO(foreground_imgdata)).convert("RGBA")
+                background.paste(foreground, mask=foreground)
+
+            background.save(merged_imgdata, "PNG")
+        except:
+            logger.exception("Failed to merge images.")
         return merged_imgdata
 
     def createlayerreport(self, layername, layerimage):
