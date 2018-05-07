@@ -31,6 +31,7 @@ from contextlib import closing
 from cfchecker import cfchecks
 from PIL import Image
 from io import BytesIO
+import re
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
 base_url = "http://adaguc-checker:8080/adaguc-services/adagucserver?"
@@ -49,10 +50,11 @@ logger.addHandler(loghandler)
 logger.setLevel(logging.DEBUG)
 
 class AdagucChecker(cfchecks.CFChecker):
-    def __init__(self, args):
+    def __init__(self, args, cfcheckstream=''):
         cfchecks.CFChecker.__init__(self)
         self.checks = args.checks.split(",")
         self.imagedir = args.imagedir
+        self.cfcheckstream = cfcheckstream
         if args.base_url:
             self.base_url = args.base_url
         else:
@@ -221,7 +223,28 @@ class AdagucChecker(cfchecks.CFChecker):
         return reportobj
 
     def _checker(self):
+        report_dict = {}
+        if ("all" in self.checks or "standard" in self.checks):
+            cfchecks.CFChecker._checker(self)
+
+            cfchecks_dict = {"cfcheck_report" : {"report":self.cfcheckstream.data}}
+
+            match=re.search('^ERRORS detected: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
+            if(match):
+                cfchecks_dict["cfcheck_report"]["nerrors"]=int(match.group(1))
+            else:
+                cfchecks_dict["cfcheck_report"]["nerrors"]=None
+
+            match=re.search('^WARNINGS given: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
+            if(match):
+                cfchecks_dict["cfcheck_report"]["nwarnings"]=int(match.group(1))
+            else:
+                cfchecks_dict["cfcheck_report"]["nwarnings"]=None
+
+            report_dict.update(cfchecks_dict)
+
         sys.stdout = sys.__stdout__
+
         if ("all" in self.checks or "adaguc" in self.checks):
             if not self.dirname:
                 query_string_src = '='.join(("source", "/%s" % self.fname))
@@ -247,12 +270,10 @@ class AdagucChecker(cfchecks.CFChecker):
                         cap_dict["nwarnings"] += 1
 
 
-            report_dict = cap_dict.copy()
+            report_dict.update(cap_dict)
             report_dict.update(map_dict)
-            print json.dumps(report_dict)
 
-        if ("all" in self.checks or "standard" in self.checks):
-            cfchecks.CFChecker._checker(self)
+        print json.dumps(report_dict)
 
     def _check_latlon_bounds(self):
         pass
@@ -285,10 +306,20 @@ def parse_args():
                                               "dockers started with the start-docker.sh script." % base_url))
     return parser.parse_args()
 
+class StreamToStr():
+    """
+    Catches all stdoutput and concatenates to self.data
+    :return: A class-instance, with StreamToStr.data containing the stream
+    """
+    def __init__(self):
+        self.data=''
+    def write(self, s):
+        self.data+=s
+
 def main():
     args = parse_args()
-    sys.stdout = open("/dev/null", "w")
-    checker = AdagucChecker(args)
+    sys.stdout = cfcheckstream = StreamToStr()
+    checker = AdagucChecker(args, cfcheckstream)
     AdagucChecker.checker(checker, args.filename)
     sys.exit(0)
 
