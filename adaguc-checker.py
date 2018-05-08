@@ -119,6 +119,7 @@ class AdagucChecker(cfchecks.CFChecker):
 
         return getCapabilitiesResult, getcap_dict
 
+
     def getmap(self, source, layer):
         """
         Performs a get map request for the specified layer. This results in an image of the getmap result as well as
@@ -213,7 +214,7 @@ class AdagucChecker(cfchecks.CFChecker):
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
                 reportobj_str = reportfile.read()
         reportobj = json.loads(reportobj_str)
-        reportobj["image"] = "base64.b64encode(layerimage.getvalue())"
+        reportobj["image"] = base64.b64encode(layerimage.getvalue())
         reportobj["reportname"] = layername
         reportobj["nerrors"] = 0
         reportobj["nwarnings"] = 0
@@ -234,28 +235,52 @@ class AdagucChecker(cfchecks.CFChecker):
         if ("all" in self.checks or "standard" in self.checks):
             cfchecks.CFChecker._checker(self)
 
-            cfchecks_dict = {"cfcheck_report" : {"report":self.cfcheckstream.data}}
+            cfchecks_dict = {"cfcheck_report":{"nerrors":0,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
 
-            match=re.search('^ERRORS detected: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
-            if(match):
-                cfchecks_dict["cfcheck_report"]["nerrors"]=int(match.group(1))
-                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
-            else:
-                cfchecks_dict["cfcheck_report"]["nerrors"]=None
+            curblock=None
+            curname=None
+            for line in self.cfcheckstream.data.splitlines():
+                if(line.strip()==''):
+                    curblock='empty'
+                if(line.startswith('=====================')):
+                    curblock='header'
+                elif(line.startswith('------------------')):
+                    curblock='check'
+                elif(line.startswith('Checking variable: ')):
+                    curblock='check'
+                    curname=line[len('Checking variable: '):]
+                elif(line.startswith('WARN: ')):
+                    curblock='WARNING'
+                    line=line[len('WARN: '):]
+                    cfchecks_dict["cfcheck_report"]["nwarnings"]+=1
+                elif(line.startswith('ERROR: ')):
+                    curblock='ERROR'
+                    line=line[len('ERROR: '):]
+                    cfchecks_dict["cfcheck_report"]["nerrors"]+=1
+                elif(line.startswith('INFO: ')):
+                    curblock='INFO'
+                    line=line[len('INFO: '):]
+                    cfchecks_dict["cfcheck_report"]["ninfo"]+=1
+                elif(curblock=='header'):
+                    cfchecks_dict["cfcheck_report"]["header"]+=line+"\n"
+                elif(line.startswith('ERRORS detected:')):
+                    curblock='summary'
 
-            match=re.search('^WARNINGS given: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
-            if(match):
-                cfchecks_dict["cfcheck_report"]["nwarnings"]=int(match.group(1))
-                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
-            else:
-                cfchecks_dict["cfcheck_report"]["nwarnings"]=None
+                if(curblock=='ERROR') or (curblock=='INFO') or (curblock=='WARNING'):
+                    if(curname):
+                        line='Variable '+curname+': '+line
+                    cfchecks_dict["cfcheck_report"]["messages"].append(
+                        {
+                            "category"          : "GENERAL",
+                            "documentationLink" : "",
+                            "message"           : line,
+                            "severity"          : curblock
+                        }
+                        )
 
-            match=re.search('^INFORMATION messages: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
-            if(match):
-                cfchecks_dict["cfcheck_report"]["ninfo"]=int(match.group(1))
-                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
-            else:
-                cfchecks_dict["cfcheck_report"]["ninfo"]=None
+            report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
+            report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
+            report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
 
             report_dict.update(cfchecks_dict)
 
