@@ -233,56 +233,77 @@ class AdagucChecker(cfchecks.CFChecker):
     def _checker(self):
         report_dict = {"nerrors":0, "nwarnings":0, "ninfo":0}
         if ("all" in self.checks or "standard" in self.checks):
-            cfchecks.CFChecker._checker(self)
 
-            cfchecks_dict = {"cfcheck_report":{"nerrors":0,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
+            try:
+                cfchecks.CFChecker._checker(self)
 
-            curblock=None
-            curname=None
-            for line in self.cfcheckstream.data.splitlines():
-                if(line.strip()==''):
-                    curblock='empty'
-                if(line.startswith('=====================')):
-                    curblock='header'
-                elif(line.startswith('------------------')):
-                    curblock='check'
-                elif(line.startswith('Checking variable: ')):
-                    curblock='check'
-                    curname=line[len('Checking variable: '):]
-                elif(line.startswith('WARN: ')):
-                    curblock='WARNING'
-                    line=line[len('WARN: '):]
-                    cfchecks_dict["cfcheck_report"]["nwarnings"]+=1
-                elif(line.startswith('ERROR: ')):
-                    curblock='ERROR'
-                    line=line[len('ERROR: '):]
-                    cfchecks_dict["cfcheck_report"]["nerrors"]+=1
-                elif(line.startswith('INFO: ')):
-                    curblock='INFO'
-                    line=line[len('INFO: '):]
-                    cfchecks_dict["cfcheck_report"]["ninfo"]+=1
-                elif(curblock=='header'):
-                    cfchecks_dict["cfcheck_report"]["header"]+=line+"\n"
-                elif(line.startswith('ERRORS detected:')):
-                    curblock='summary'
+                cfchecks_dict = {"cfcheck_report":{"nerrors":0,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
 
-                if(curblock=='ERROR') or (curblock=='INFO') or (curblock=='WARNING'):
-                    if(curname):
-                        line='Variable '+curname+': '+line
-                    cfchecks_dict["cfcheck_report"]["messages"].append(
+                curblock=None
+                curname=None
+                for line in self.cfcheckstream.data.splitlines():
+                    if(line.strip()==''):
+                        curblock='empty'
+                    if(line.startswith('=====================')):
+                        curblock='header'
+                    elif(line.startswith('------------------')):
+                        curblock='check'
+                    elif(line.startswith('Checking variable: ')):
+                        curblock='check'
+                        curname=line[len('Checking variable: '):]
+                    elif(line.startswith('WARN: ')):
+                        curblock='WARNING'
+                        line=line[len('WARN: '):]
+                        cfchecks_dict["cfcheck_report"]["nwarnings"]+=1
+                    elif(line.startswith('ERROR: ')):
+                        curblock='ERROR'
+                        line=line[len('ERROR: '):]
+                        cfchecks_dict["cfcheck_report"]["nerrors"]+=1
+                    elif(line.startswith('INFO: ')):
+                        curblock='INFO'
+                        line=line[len('INFO: '):]
+                        cfchecks_dict["cfcheck_report"]["ninfo"]+=1
+                    elif(curblock=='header'):
+                        cfchecks_dict["cfcheck_report"]["header"]+=line+"\n"
+                    elif(line.startswith('ERRORS detected:')):
+                        curblock='summary'
+
+                    if(curblock=='ERROR') or (curblock=='INFO') or (curblock=='WARNING'):
+                        if(curname):
+                            line='Variable '+curname+': '+line
+                        cfchecks_dict["cfcheck_report"]["messages"].append(
+                            {
+                                "category"          : "GENERAL",
+                                "documentationLink" : "",
+                                "message"           : line,
+                                "severity"          : curblock
+                            }
+                            )
+
+                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
+                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
+                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+
+                report_dict.update(cfchecks_dict)
+            except:
+
+                # TODO: Handle exception better, for example by logging the exception.
+                cfchecks_dict = {"cfcheck_report":{"nerrors":1,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
+
+                cfchecks_dict["cfcheck_report"]["messages"].append(
                         {
                             "category"          : "GENERAL",
                             "documentationLink" : "",
-                            "message"           : line,
-                            "severity"          : curblock
+                            "message"           : "Exception occurred during CF-checks.",
+                            "severity"          : "ERROR"
                         }
-                        )
+                )
 
-            report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
-            report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
-            report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
+                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
+                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
 
-            report_dict.update(cfchecks_dict)
+                report_dict.update(cfchecks_dict)
 
         sys.stdout = sys.__stdout__
 
