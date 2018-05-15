@@ -103,7 +103,7 @@ class AdagucChecker(cfchecks.CFChecker):
             print "Exception occured while performing getCapabilities request: %s" % str(e)
 
 
-        getcap_dict = {"nerrors":0, "nwarnings":0, "getcap":{"reportname":"GetCapabilities", "nerrors":0, "nwarnings":0, "xml":"empty for now"}}
+        getcap_dict = {"getcap":{"reportname":"GetCapabilities", "nerrors":0, "nwarnings":0, "ninfo":0, "xml":"empty for now"}}
         if (os.path.exists("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])):
             # shutil.copyfile("%s/checker_report.txt" % os.environ['OUTPUT_DIR'], "getcap_report.txt")
             with (open("%s/checker_report.txt" % os.environ['OUTPUT_DIR'])) as reportfile:
@@ -111,13 +111,14 @@ class AdagucChecker(cfchecks.CFChecker):
 
         for message in getcap_dict["getcap"]["messages"]:
             if(message["severity"]=='ERROR'):
-                getcap_dict["getcap"]["nerrors"] += 1
-                getcap_dict["nerrors"] += 1
+                getcap_dict["getcap"]["nerrors"]+=1
             elif(message["severity"]=='WARNING'):
-                getcap_dict["getcap"]["nwarnings"] += 1
-                getcap_dict["nwarnings"] += 1
+                getcap_dict["getcap"]["nwarnings"]+=1
+            elif(message["severity"]=='INFO'):
+                getcap_dict["getcap"]["ninfo"]+=1
 
         return getCapabilitiesResult, getcap_dict
+
 
     def getmap(self, source, layer):
         """
@@ -217,35 +218,92 @@ class AdagucChecker(cfchecks.CFChecker):
         reportobj["reportname"] = layername
         reportobj["nerrors"] = 0
         reportobj["nwarnings"] = 0
+        reportobj["ninfo"] = 0
 
         for message in reportobj["messages"]:
             if(message["severity"]=='ERROR'):
                 reportobj["nerrors"] += 1
-            if(message["severity"]=='WARNING'):
+            elif(message["severity"]=='WARNING'):
                 reportobj["nwarnings"] += 1
+            elif(message["severity"]=='INFO'):
+                reportobj["ninfo"] += 1
 
         return reportobj
 
     def _checker(self):
-        report_dict = {}
+        report_dict = {"nerrors":0, "nwarnings":0, "ninfo":0}
         if ("all" in self.checks or "standard" in self.checks):
-            cfchecks.CFChecker._checker(self)
 
-            cfchecks_dict = {"cfcheck_report" : {"report":self.cfcheckstream.data}}
+            try:
+                cfchecks.CFChecker._checker(self)
 
-            match=re.search('^ERRORS detected: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
-            if(match):
-                cfchecks_dict["cfcheck_report"]["nerrors"]=int(match.group(1))
-            else:
-                cfchecks_dict["cfcheck_report"]["nerrors"]=None
+                cfchecks_dict = {"cfcheck_report":{"nerrors":0,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
 
-            match=re.search('^WARNINGS given: ([0-9]+)$',self.cfcheckstream.data,re.MULTILINE)
-            if(match):
-                cfchecks_dict["cfcheck_report"]["nwarnings"]=int(match.group(1))
-            else:
-                cfchecks_dict["cfcheck_report"]["nwarnings"]=None
+                curblock=None
+                curname=None
+                for line in self.cfcheckstream.data.splitlines():
+                    if(line.strip()==''):
+                        curblock='empty'
+                    if(line.startswith('=====================')):
+                        curblock='header'
+                    elif(line.startswith('------------------')):
+                        curblock='check'
+                    elif(line.startswith('Checking variable: ')):
+                        curblock='check'
+                        curname=line[len('Checking variable: '):]
+                    elif(line.startswith('WARN: ')):
+                        curblock='WARNING'
+                        line=line[len('WARN: '):]
+                        cfchecks_dict["cfcheck_report"]["nwarnings"]+=1
+                    elif(line.startswith('ERROR: ')):
+                        curblock='ERROR'
+                        line=line[len('ERROR: '):]
+                        cfchecks_dict["cfcheck_report"]["nerrors"]+=1
+                    elif(line.startswith('INFO: ')):
+                        curblock='INFO'
+                        line=line[len('INFO: '):]
+                        cfchecks_dict["cfcheck_report"]["ninfo"]+=1
+                    elif(curblock=='header'):
+                        cfchecks_dict["cfcheck_report"]["header"]+=line+"\n"
+                    elif(line.startswith('ERRORS detected:')):
+                        curblock='summary'
 
-            report_dict.update(cfchecks_dict)
+                    if(curblock=='ERROR') or (curblock=='INFO') or (curblock=='WARNING'):
+                        if(curname):
+                            line='Variable '+curname+': '+line
+                        cfchecks_dict["cfcheck_report"]["messages"].append(
+                            {
+                                "category"          : "GENERAL",
+                                "documentationLink" : "",
+                                "message"           : line,
+                                "severity"          : curblock
+                            }
+                            )
+
+                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
+                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
+                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+
+                report_dict.update(cfchecks_dict)
+            except:
+
+                # TODO: Handle exception better, for example by logging the exception.
+                cfchecks_dict = {"cfcheck_report":{"nerrors":1,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
+
+                cfchecks_dict["cfcheck_report"]["messages"].append(
+                        {
+                            "category"          : "GENERAL",
+                            "documentationLink" : "",
+                            "message"           : "Exception occurred during CF-checks.",
+                            "severity"          : "ERROR"
+                        }
+                )
+
+                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
+                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
+                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+
+                report_dict.update(cfchecks_dict)
 
         sys.stdout = sys.__stdout__
 
@@ -256,6 +314,10 @@ class AdagucChecker(cfchecks.CFChecker):
                 query_string_src = '='.join(("source", "/%s/%s" % (self.dirname, self.fname)))
             capabilities, cap_dict = self.getcapabilities(query_string_src)
 
+            report_dict["nerrors"]+=cap_dict["getcap"]["nerrors"]
+            report_dict["nwarnings"]+=cap_dict["getcap"]["nwarnings"]
+            report_dict["ninfo"]+=cap_dict["getcap"]["ninfo"]
+
             layers = self.getlayers(capabilities)
             map_dict = {"getmap":[]}
             for layer in layers:
@@ -264,14 +326,20 @@ class AdagucChecker(cfchecks.CFChecker):
                 merged_imgdata = self.combineimages(bgmap_imgdata, (countries_imgdata, layer_imgdata))
                 layer_dict = self.createlayerreport(layer["name"], merged_imgdata)
                 map_dict["getmap"].append(layer_dict)
-
+                #...anders gaat het door met dict van vorige keer..
+                layer_dict["nerrors"]=0
+                layer_dict["nwarnings"]=0
+                layer_dict["ninfo"]=0
                 for message in layer_dict["messages"]:
                     if(message["severity"]=='ERROR'):
-                        layer_dict["nerrors"] += 1
-                        cap_dict["nerrors"] += 1
-                    if(message["severity"]=='WARNING'):
-                        layer_dict["nwarnings"] += 1
-                        cap_dict["nwarnings"] += 1
+                        layer_dict["nerrors"]+=1
+                        report_dict["nerrors"]+=1
+                    elif(message["severity"]=='WARNING'):
+                        layer_dict["nwarnings"]+=1
+                        report_dict["nwarnings"]+=1
+                    elif(message["severity"]=='INFO'):
+                        layer_dict["ninfo"]+=1
+                        report_dict["ninfo"]+=1
 
 
             report_dict.update(cap_dict)
