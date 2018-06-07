@@ -32,6 +32,7 @@ from cfchecker import cfchecks
 from PIL import Image
 from io import BytesIO
 import re
+import warnings
 
 NS = '{http://www.opengis.net/wms}'  # GetCapabilities XML namespace
 base_url = "http://adaguc-checker:8080/adaguc-services/adagucserver?"
@@ -42,6 +43,9 @@ query_string_map = '&'.join(("SERVICE=WMS", "REQUEST=GetMap",'WIDTH=1000', 'HEIG
                              'FORMAT=image/png', 'TRANSPARENT=TRUE'))
 query_string_par_layer = '&'.join(('CRS=EPSG:4326', 'STYLES=auto/nearest', "VERSION=1.3.0"))
 query_string_par_baselayer = '&'.join(('SRS=EPSG:4326', "VERSION=1.1.1"))
+
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 logger = logging.getLogger('adaguc-checker')
 loghandler = logging.FileHandler(filename=os.environ['LOGGING_DIR'] + '/adaguc-checker.log')
@@ -88,7 +92,9 @@ class AdagucChecker(cfchecks.CFChecker):
                 layers.append({"name": layer.find(NS + 'Name').text, "bbox": layer.find('./' + NS + "BoundingBox[@CRS='EPSG:4326']").attrib})
             return layers
         except Exception, e:
-            print "Not possible to determine layers: %s" % str(e)
+            print >>sys.stderr, "Not possible to determine layers: "+str(e)
+            logger.exception("Not possible to determine layers: "+str(e))
+
         return None
 
     def getcapabilities(self, source):
@@ -100,7 +106,9 @@ class AdagucChecker(cfchecks.CFChecker):
         try:
             getCapabilitiesResult = urlopen(url=request, context=ssl._create_unverified_context()).read()
         except Exception, e:
-            print "Exception occured while performing getCapabilities request: %s" % str(e)
+            print >>sys.stderr, "Error occured while performing getCapabilities request: "+str(e)
+            logger.exception("Error occured while performing getCapabilities request: "+str(e))
+
 
 
         getcap_dict = {"getcap":{"reportname":"GetCapabilities", "nerrors":0, "nwarnings":0, "ninfo":0, "xml":"empty for now"}}
@@ -118,7 +126,6 @@ class AdagucChecker(cfchecks.CFChecker):
                 getcap_dict["getcap"]["ninfo"]+=1
 
         return getCapabilitiesResult, getcap_dict
-
 
     def getmap(self, source, layer):
         """
@@ -146,7 +153,8 @@ class AdagucChecker(cfchecks.CFChecker):
                 imgfile.write(imgdata)
                 imgfile.close()
             elif not os.path.exists(self.imagedir):
-                print >>sys.stderr, "%s doesn't exists. Not writing image file."
+                print >>sys.stderr, "Path "+self.imagedir+" does not exists. Not writing image file."
+
         except: pass
 
         return imgdata
@@ -166,15 +174,23 @@ class AdagucChecker(cfchecks.CFChecker):
         get_bgmap_request = ''.join((base_url_bgmap, '&'.join((
             "LAYERS=naturalearth2", query_string_map, query_string_par_baselayer, bounding_box_par))))
         logger.debug("get_bgmap_request:\n" + get_bgmap_request)
-        with closing(urlopen(url=get_bgmap_request, context=ssl._create_unverified_context())) as r:
-            bg_imgdata = r.read()
+        bg_imgdata=None
+        countries_imgdata=None
+        try:
+            with closing(urlopen(url=get_bgmap_request, context=ssl._create_unverified_context())) as r:
+                bg_imgdata = r.read()
 
-        # Retrieve the countries map.
-        get_countries_request = ''.join((base_url_countries, '&'.join((
-            "LAYERS=ne_10m_admin_0_countries_simplified", query_string_map, query_string_par_baselayer, bounding_box_par))))
-        logger.debug("get_countries_request:\n" + get_countries_request)
-        with closing(urlopen(url=get_countries_request, context=ssl._create_unverified_context())) as r:
-            countries_imgdata = r.read()
+            # Retrieve the countries map.
+            get_countries_request = ''.join((base_url_countries, '&'.join((
+                "LAYERS=ne_10m_admin_0_countries_simplified", query_string_map, query_string_par_baselayer, bounding_box_par))))
+            logger.debug("get_countries_request:\n" + get_countries_request)
+            with closing(urlopen(url=get_countries_request, context=ssl._create_unverified_context())) as r:
+                countries_imgdata = r.read()
+
+        except Exception, e:
+            print >>sys.stderr, "Error occured while retrieving baselayers: "+str(e)
+            logger.exception("Error occured while retrieving baselayers: "+str(e))
+
 
         return (bg_imgdata, countries_imgdata)
 
@@ -190,15 +206,24 @@ class AdagucChecker(cfchecks.CFChecker):
         merged_imgdata = BytesIO()
 
         try:
-            background = Image.open(BytesIO(background_imgdata))
+            background=None
+            if(background_imgdata is not None):
+                background = Image.open(BytesIO(background_imgdata))
 
             for foreground_imgdata in foreground_imgdata_list:
-                foreground = Image.open(BytesIO(foreground_imgdata)).convert("RGBA")
-                background.paste(foreground, mask=foreground)
+                if(foreground_imgdata is not None):
+                    foreground = Image.open(BytesIO(foreground_imgdata)).convert("RGBA")
+                    if(background is None):
+                        background = foreground
+                    else:
+                        background.paste(foreground, mask=foreground)
 
             background.save(merged_imgdata, "PNG")
-        except:
-            logger.exception("Failed to merge images.")
+        except Exception, e:
+            print >>sys.stderr, "Error occured while merging images: "+str(e)
+            logger.exception("Error occured while merging images: "+str(e))
+
+
         return merged_imgdata
 
     def createlayerreport(self, layername, layerimage):
@@ -234,10 +259,10 @@ class AdagucChecker(cfchecks.CFChecker):
         report_dict = {"nerrors":0, "nwarnings":0, "ninfo":0}
         if ("all" in self.checks or "standard" in self.checks):
 
+            cfchecks_dict = {"cfcheck_report":{"nerrors":0,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
+
             try:
                 cfchecks.CFChecker._checker(self)
-
-                cfchecks_dict = {"cfcheck_report":{"nerrors":0,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
 
                 curblock=None
                 curname=None
@@ -280,15 +305,9 @@ class AdagucChecker(cfchecks.CFChecker):
                             }
                             )
 
-                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
-                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
-                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+            except Exception, e:
 
-                report_dict.update(cfchecks_dict)
-            except:
-
-                # TODO: Handle exception better, for example by logging the exception.
-                cfchecks_dict = {"cfcheck_report":{"nerrors":1,"ninfo":0,"nwarnings":0,"header":"","messages":[]}}
+                cfchecks_dict["cfcheck_report"]["nerrors"]+=1
 
                 cfchecks_dict["cfcheck_report"]["messages"].append(
                         {
@@ -299,11 +318,14 @@ class AdagucChecker(cfchecks.CFChecker):
                         }
                 )
 
-                report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
-                report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
-                report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+                print >>sys.stderr, "Error occured during CF-checks: "+str(e)
+                logger.exception("Error occured during CF-checks: "+str(e))
 
-                report_dict.update(cfchecks_dict)
+            report_dict["nerrors"]+=cfchecks_dict["cfcheck_report"]["nerrors"]
+            report_dict["nwarnings"]+=cfchecks_dict["cfcheck_report"]["nwarnings"]
+            report_dict["ninfo"]+=cfchecks_dict["cfcheck_report"]["ninfo"]
+
+            report_dict.update(cfchecks_dict)
 
         sys.stdout = sys.__stdout__
 
@@ -323,10 +345,21 @@ class AdagucChecker(cfchecks.CFChecker):
             for layer in layers:
                 layer_imgdata = self.getmap(query_string_src, layer)
                 bgmap_imgdata, countries_imgdata = self.getbaselayers(layer["bbox"])
+                if(bgmap_imgdata is None) or (countries_imgdata is None):
+                    cfchecks_dict["cfcheck_report"]["nwarnings"]+=1
+                    cfchecks_dict["cfcheck_report"]["messages"].append(
+                            {
+                                "category"          : "GENERAL",
+                                "documentationLink" : "",
+                                "message"           : "No response from mapserver; mapimage could not be shown for layer "+layer["name"]+". This is not a CF convention error",
+                                "severity"          : "WARNING"
+                            }
+                    )
+
                 merged_imgdata = self.combineimages(bgmap_imgdata, (countries_imgdata, layer_imgdata))
                 layer_dict = self.createlayerreport(layer["name"], merged_imgdata)
                 map_dict["getmap"].append(layer_dict)
-                #...anders gaat het door met dict van vorige keer..
+
                 layer_dict["nerrors"]=0
                 layer_dict["nwarnings"]=0
                 layer_dict["ninfo"]=0
