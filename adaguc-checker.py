@@ -329,6 +329,7 @@ class AdagucChecker(cfchecks.CFChecker):
 
         sys.stdout = sys.__stdout__
 
+
         if ("all" in self.checks or "adaguc" in self.checks):
             if not self.dirname:
                 query_string_src = '='.join(("source", "/%s" % self.fname))
@@ -345,19 +346,21 @@ class AdagucChecker(cfchecks.CFChecker):
             for layer in layers:
                 layer_imgdata = self.getmap(query_string_src, layer)
                 bgmap_imgdata, countries_imgdata = self.getbaselayers(layer["bbox"])
-                if(bgmap_imgdata is None) or (countries_imgdata is None):
-                    cfchecks_dict["cfcheck_report"]["nwarnings"]+=1
-                    cfchecks_dict["cfcheck_report"]["messages"].append(
-                            {
-                                "category"          : "GENERAL",
-                                "documentationLink" : "",
-                                "message"           : "No response from mapserver; mapimage could not be shown for layer "+layer["name"]+". This is not a CF convention error",
-                                "severity"          : "WARNING"
-                            }
-                    )
 
                 merged_imgdata = self.combineimages(bgmap_imgdata, (countries_imgdata, layer_imgdata))
                 layer_dict = self.createlayerreport(layer["name"], merged_imgdata)
+
+                if(bgmap_imgdata is None) or (countries_imgdata is None):
+                    if("messages" not in layer_dict):
+                        layer_dict["messages"]=[]
+                    layer_dict["messages"].append(
+                            {
+                                "category"          : "GENERAL",
+                                "documentationLink" : "",
+                                "message"           : "No response from mapserver; mapimage could not be shown. This is not a Layer report error",
+                                "severity"          : "WARNING"
+                            }
+                    )
                 map_dict["getmap"].append(layer_dict)
 
                 layer_dict["nerrors"]=0
